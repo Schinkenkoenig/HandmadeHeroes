@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <dsound.h>
 #include <windows.h>
 #include <xinput.h>
 
@@ -36,7 +37,7 @@ struct win32_window_dimension
 typedef X_INPUT_GET_STATE(x_input_get_state);
 X_INPUT_GET_STATE(XInputGetStateStub)
 {
-    return 0;
+    return ERROR_DEVICE_NOT_CONNECTED;
 }
 global_variable x_input_get_state *XInputGetState_ = XInputGetStateStub;
 
@@ -45,9 +46,12 @@ global_variable x_input_get_state *XInputGetState_ = XInputGetStateStub;
 typedef X_INPUT_SET_STATE(x_input_set_state);
 X_INPUT_SET_STATE(XInputSetStateStub)
 {
-    return 0;
+    return ERROR_DEVICE_NOT_CONNECTED;
 }
 global_variable x_input_set_state *XInputSetState_ = XInputSetStateStub;
+
+#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
+typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
 #define XInputGetState XInputGetState_
 #define XInputSetState XInputSetState_
@@ -60,12 +64,99 @@ win32_load_x_input()
 {
     HMODULE x_input_library = LoadLibraryA("x_input1_4.dll");
 
+    if(!x_input_library)
+    {
+        x_input_library = LoadLibraryA("x_input1_3.dll");
+    }
+
     if (x_input_library)
     {
         XInputGetState = (x_input_get_state *)GetProcAddress(x_input_library, "XInputGetState");
         XInputSetState = (x_input_set_state *)GetProcAddress(x_input_library, "XInputSetState");
+
+        // Diagnostic
+    }
+    else
+    {
+        // Diagnostic
     }
 }
+
+internal void
+win32_init_dsound(HWND window_handle, int32 samples_per_second, int32 buffer_size)
+{
+    HMODULE d_sound_library = LoadLibraryA("dsound.dll");
+
+    if (d_sound_library)
+    {
+        // get dsound object
+        direct_sound_create *DirectSoundCreate = (direct_sound_create *)GetProcAddress(d_sound_library, "DirectSoundCreate");
+
+        LPDIRECTSOUND direct_sound;
+        if(DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &direct_sound, 0)))
+        {
+            WAVEFORMATEX wave_format = {};
+            wave_format.wFormatTag = WAVE_FORMAT_PCM;
+            wave_format.nChannels = 2;
+            wave_format.nSamplesPerSec = samples_per_second;
+            wave_format.wBitsPerSample = 16;
+            wave_format.nBlockAlign = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
+            wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
+            wave_format.cbSize = 0;
+
+            if(SUCCEEDED(direct_sound->SetCooperativeLevel(window_handle, DSSCL_PRIORITY)))
+            {
+                DSBUFFERDESC buffer_description = {};
+                buffer_description.dwSize = sizeof(buffer_description);
+                buffer_description.dwFlags = DSBCAPS_PRIMARYBUFFER;
+
+                // create prim buffer
+                LPDIRECTSOUNDBUFFER primary_buffer;
+                if(SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &primary_buffer, 0)))
+                {
+                    if(SUCCEEDED(primary_buffer->SetFormat(&wave_format)))
+                    {
+
+                    }
+                    else
+                    {
+                        // diagnostic
+                    }
+                }
+                else
+                {
+                    // diagnostic
+                }
+            }
+            else
+            {
+                // diagnostic
+            }
+            DSBUFFERDESC buffer_description = {};
+            buffer_description.dwSize = sizeof(buffer_description);
+            buffer_description.dwFlags = 0;
+            buffer_description.dwBufferBytes = buffer_size;
+            buffer_description.lpwfxFormat = &wave_format;
+            LPDIRECTSOUNDBUFFER secondary_buffer;
+
+            if(SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &secondary_buffer, 0)))
+            {
+                // start playing
+            }
+            }
+        else
+        {
+            // Diagnostic
+        }
+
+
+    }
+    else
+    {
+        // Diagnostic
+    }
+}
+
 
 win32_window_dimension
 win32_get_window_dimension(HWND window)
@@ -273,6 +364,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 
             int x_offset = 0;
             int y_offset = 0;
+
+            win32_init_dsound(window_handle, 48000, 48000 * sizeof(int16)*2);
 
             global_running = true;
             while (global_running)
