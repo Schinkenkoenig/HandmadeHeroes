@@ -58,6 +58,7 @@ typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
 global_variable bool global_running = true;
 global_variable win32_offscreen_buffer global_backbuffer;
+global_variable LPDIRECTSOUNDBUFFER global_secondary_buffer;
 
 internal void
 win32_load_x_input()
@@ -137,9 +138,8 @@ win32_init_dsound(HWND window_handle, int32 samples_per_second, int32 buffer_siz
             buffer_description.dwFlags = 0;
             buffer_description.dwBufferBytes = buffer_size;
             buffer_description.lpwfxFormat = &wave_format;
-            LPDIRECTSOUNDBUFFER secondary_buffer;
 
-            if(SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &secondary_buffer, 0)))
+            if(SUCCEEDED(direct_sound->CreateSoundBuffer(&buffer_description, &global_secondary_buffer, 0)))
             {
                 // start playing
             }
@@ -362,10 +362,23 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
         {
             HDC device_context = GetDC(window_handle);
 
+            // graphics test
             int x_offset = 0;
             int y_offset = 0;
 
-            win32_init_dsound(window_handle, 48000, 48000 * sizeof(int16)*2);
+            // sound test
+            int samples_per_second = 48000;
+            int tone_hz = 256;
+            int16 volume = 2000;
+            uint32 running_sample_index = 0;
+            int square_wave_counter = 0;
+            int square_wave_period = samples_per_second / tone_hz;
+            int half_square_wave_period = square_wave_period / 2;
+            int bytes_per_sample = sizeof(int16) * 2;
+            int secondary_buffer_size = samples_per_second * bytes_per_sample;
+
+            win32_init_dsound(window_handle, samples_per_second, secondary_buffer_size);
+            global_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
             global_running = true;
             while (global_running)
@@ -411,10 +424,8 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                         int16 stick_x = pad->sThumbLX;
                         int16 stick_y = pad->sThumbLY;
 
-                        if (a)
-                        {
-                            y_offset += 2;
-                        }
+                        x_offset += pad->sThumbLX / 16;
+                        y_offset += pad->sThumbLY / 16;
                     }
                     else
                     {
@@ -424,11 +435,58 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
 
                 render_weird_gradient(&global_backbuffer, x_offset, y_offset);
 
+                // output sound
+                DWORD play_cursor;
+                DWORD write_cursor;
+
+                if(SUCCEEDED(global_secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor)))
+                {
+                    DWORD byte_to_lock = running_sample_index * bytes_per_sample % secondary_buffer_size;
+                    DWORD bytes_to_write;
+
+                    if (byte_to_lock > play_cursor)
+                    {
+                        bytes_to_write = secondary_buffer_size - byte_to_lock;
+                        bytes_to_write += play_cursor;
+                    }
+                    else
+                    {
+                        bytes_to_write = play_cursor - byte_to_lock;
+                    }
+
+                    VOID *region1;
+                    DWORD region1_size;
+                    VOID *region2;
+                    DWORD region2_size;
+
+                    if(SUCCEEDED(global_secondary_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0)))
+                    {
+                        int16 *sample_out = (int16 *)region1;
+                        DWORD region1_sample_count = region1_size / bytes_per_sample;
+                        for (DWORD sample_index = 0; sample_index < region1_sample_count; ++sample_index)
+                        {
+                            int16 sample_value = ((running_sample_index / half_square_wave_period) % 2) ? volume : -volume;
+                            *sample_out++ = sample_value;
+                            *sample_out++ = sample_value;
+                            ++running_sample_index;
+                        }
+
+                        sample_out = (int16 *)region2;
+                        DWORD region2_sample_count = region2_size / bytes_per_sample;
+                        for (DWORD sample_index = 0; sample_index < region2_sample_count; ++sample_index)
+                        {
+                            int16 sample_value = ((running_sample_index / half_square_wave_period) % 2) ? volume : -volume;
+                            *sample_out++ = sample_value;
+                            *sample_out++ = sample_value;
+                            ++running_sample_index;
+                        }
+
+                        global_secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+                    }
+                }
+
                 win32_window_dimension dimension = win32_get_window_dimension(window_handle);
-
                 win32_display_buffer_in_window(&global_backbuffer, device_context, dimension.width, dimension.height);
-
-                ++x_offset;
             }
         }
         else
