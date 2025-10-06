@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <math.h>
 #include <dsound.h>
 #include <windows.h>
 #include <xinput.h>
@@ -6,7 +7,7 @@
 #define internal static
 #define local_persist static
 #define global_variable static
-
+#define Pi32 3.14159265358979f
 typedef int8_t int8;
 typedef int16_t int16;
 typedef int32_t int32;
@@ -16,6 +17,9 @@ typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
 typedef uint64_t uint64;
+
+typedef float float32;
+typedef double float64;
 
 struct win32_offscreen_buffer
 {
@@ -59,6 +63,18 @@ typedef DIRECT_SOUND_CREATE(direct_sound_create);
 global_variable bool global_running = true;
 global_variable win32_offscreen_buffer global_backbuffer;
 global_variable LPDIRECTSOUNDBUFFER global_secondary_buffer;
+
+struct win32_sound_output
+{
+    int samples_per_second;
+    int tone_hz;
+    int16 volume;
+    uint32 running_sample_index;
+    int wave_counter;
+    int wave_period;
+    int bytes_per_sample;
+    int secondary_buffer_size;
+};
 
 internal void
 win32_load_x_input()
@@ -148,8 +164,6 @@ win32_init_dsound(HWND window_handle, int32 samples_per_second, int32 buffer_siz
         {
             // Diagnostic
         }
-
-
     }
     else
     {
@@ -328,6 +342,38 @@ Win32MainWindowCallback(HWND window, UINT message, WPARAM w_param, LPARAM l_para
     return (result);
 }
 
+void
+win32_fill_sound_buffer(win32_sound_output *sound_output, DWORD byte_to_lock, DWORD bytes_to_write)
+{
+    VOID *region1;
+    DWORD region1_size;
+    VOID *region2;
+    DWORD region2_size;
+
+    if(SUCCEEDED(global_secondary_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0)))
+    {
+        int16 *sample_out = (int16 *)region1;
+        DWORD region1_sample_count = region1_size / sound_output->bytes_per_sample;
+        DWORD region2_sample_count = region2_size / sound_output->bytes_per_sample;
+
+        for (DWORD sample_index =0; sample_index < region1_sample_count + region2_sample_count; ++sample_index)
+        {
+            if(sample_index > region1_sample_count)
+            {
+                sample_out = (int16 *)region2;
+            }
+            float32 t = 2.0f * Pi32 * ((float32) sound_output->running_sample_index / (float32) sound_output->wave_period);
+            float32 sine_value = sinf(t);
+            int16 sample_value = (int16)(sine_value * sound_output->volume);
+            *sample_out++ = sample_value;
+            *sample_out++ = sample_value;
+            ++sound_output->running_sample_index;
+        }
+
+        global_secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+    }
+}
+
 int CALLBACK
 WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int show_code)
 {
@@ -340,6 +386,10 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
     window_class.lpfnWndProc = Win32MainWindowCallback;
     window_class.hInstance = instance;
     window_class.lpszClassName = "HandmadeHeroWindowClass";
+
+    LARGE_INTEGER performance_count_frequency_result;
+    QueryPerformanceFrequency(&performance_count_frequency_result);
+    int64 performance_count_frequency = performance_count_frequency_result.QuadPart;
 
     if (RegisterClassA(&window_class))
     {
@@ -367,22 +417,30 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
             int y_offset = 0;
 
             // sound test
-            int samples_per_second = 48000;
-            int tone_hz = 256;
-            int16 volume = 2000;
-            uint32 running_sample_index = 0;
-            int square_wave_counter = 0;
-            int square_wave_period = samples_per_second / tone_hz;
-            int half_square_wave_period = square_wave_period / 2;
-            int bytes_per_sample = sizeof(int16) * 2;
-            int secondary_buffer_size = samples_per_second * bytes_per_sample;
+            win32_sound_output sound_output = {0};
+            sound_output.samples_per_second = 48000;
+            sound_output.tone_hz = 256;
+            sound_output.volume = 2000;
+            sound_output.running_sample_index = 0;
+            sound_output.wave_counter = 0;
+            sound_output.wave_period = sound_output.samples_per_second / sound_output.tone_hz;
+            sound_output.bytes_per_sample = sizeof(int16) * 2;
+            sound_output.secondary_buffer_size = sound_output.samples_per_second * sound_output.bytes_per_sample;
 
-            win32_init_dsound(window_handle, samples_per_second, secondary_buffer_size);
+            win32_init_dsound(window_handle, sound_output.samples_per_second, sound_output.secondary_buffer_size);
+            win32_fill_sound_buffer(&sound_output, 0, sound_output.secondary_buffer_size);
             global_secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
             global_running = true;
+
+            int64 last_cycle_count = __rdtsc();
+
+            LARGE_INTEGER last_counter;
+            QueryPerformanceCounter(&last_counter);
+
             while (global_running)
             {
+
                 MSG message;
 
                 while (PeekMessage(&message, 0, 0, 0, PM_REMOVE))
@@ -439,14 +497,15 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                 DWORD play_cursor;
                 DWORD write_cursor;
 
+
                 if(SUCCEEDED(global_secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor)))
                 {
-                    DWORD byte_to_lock = running_sample_index * bytes_per_sample % secondary_buffer_size;
-                    DWORD bytes_to_write;
+                    DWORD byte_to_lock = (sound_output.running_sample_index * sound_output.bytes_per_sample) % sound_output.secondary_buffer_size;
+                    DWORD bytes_to_write = 0;
 
                     if (byte_to_lock > play_cursor)
                     {
-                        bytes_to_write = secondary_buffer_size - byte_to_lock;
+                        bytes_to_write = sound_output.secondary_buffer_size - byte_to_lock;
                         bytes_to_write += play_cursor;
                     }
                     else
@@ -454,44 +513,34 @@ WinMain(HINSTANCE instance, HINSTANCE prev_instance, LPSTR command_line, int sho
                         bytes_to_write = play_cursor - byte_to_lock;
                     }
 
-                    VOID *region1;
-                    DWORD region1_size;
-                    VOID *region2;
-                    DWORD region2_size;
-
-                    if(SUCCEEDED(global_secondary_buffer->Lock(byte_to_lock, bytes_to_write, &region1, &region1_size, &region2, &region2_size, 0)))
-                    {
-                        int16 *sample_out = (int16 *)region1;
-                        DWORD region1_sample_count = region1_size / bytes_per_sample;
-                        for (DWORD sample_index = 0; sample_index < region1_sample_count; ++sample_index)
-                        {
-                            int16 sample_value = ((running_sample_index / half_square_wave_period) % 2) ? volume : -volume;
-                            *sample_out++ = sample_value;
-                            *sample_out++ = sample_value;
-                            ++running_sample_index;
-                        }
-
-                        sample_out = (int16 *)region2;
-                        DWORD region2_sample_count = region2_size / bytes_per_sample;
-                        for (DWORD sample_index = 0; sample_index < region2_sample_count; ++sample_index)
-                        {
-                            int16 sample_value = ((running_sample_index / half_square_wave_period) % 2) ? volume : -volume;
-                            *sample_out++ = sample_value;
-                            *sample_out++ = sample_value;
-                            ++running_sample_index;
-                        }
-
-                        global_secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
-                    }
+                    win32_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write);
+                }
+                else
+                {
+                    // todo(nils): logging
                 }
 
                 win32_window_dimension dimension = win32_get_window_dimension(window_handle);
                 win32_display_buffer_in_window(&global_backbuffer, device_context, dimension.width, dimension.height);
+
+                int64 end_cycle_count = __rdtsc();
+                int64 cycles_elapsed = end_cycle_count - last_cycle_count;
+
+                LARGE_INTEGER end_counter;
+                QueryPerformanceCounter(&end_counter);
+
+                int64 counter_elapsed = end_counter.QuadPart - last_counter.QuadPart;
+                int32 ms_per_frame = (int32((1000 * counter_elapsed) / performance_count_frequency));
+                int32 FPS = performance_count_frequency / counter_elapsed;
+                int32 mega_cycyles_per_frame = (int32)(cycles_elapsed / (1000 * 1000));
+
+                char buffer[256];
+                wsprintfA(buffer, "%dms/frame, %d frames/s, %dMegaCycles/frame\n", ms_per_frame, FPS, mega_cycyles_per_frame);
+                OutputDebugStringA(buffer);
+
+                last_cycle_count = end_cycle_count;
+                last_counter = end_counter;
             }
-        }
-        else
-        {
-            // todo(nils): logging
         }
     }
     else
