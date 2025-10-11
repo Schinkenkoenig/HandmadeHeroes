@@ -1,0 +1,4 @@
+CompileFlags:
+  Add: 
+  - -std=c++14
+  - -I./sdl2-64/include/SDL2
