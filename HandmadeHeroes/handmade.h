@@ -7,9 +7,11 @@
   (this may expand in the future - sound on separate thread, etc.)
 */
 
-// FOUR THINGS - timing, controller/keyboard input, bitmap buffer to use, sound buffer to use
+// FOUR THINGS - timing, controller/keyboard input, bitmap buffer to use, sound
+// buffer to use
 
-// TODO(casey): In the future, rendering _specifically_ will become a three-tiered abstraction!!!
+// TODO(casey): In the future, rendering _specifically_ will become a
+// three-tiered abstraction!!!
 
 #include "def.h"
 #if !defined(HANDMADE_H)

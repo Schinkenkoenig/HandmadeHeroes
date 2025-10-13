@@ -63,10 +63,13 @@ sdl_audio_callback(void *user_data, Uint8 *audio_data, int length)
         region1_size = ring_buffer->size - ring_buffer->play_cursor;
         region2_size = length - region1_size;
     }
-    memcpy(audio_data, (uint8 *)(ring_buffer->data) + ring_buffer->play_cursor, region1_size);
+    memcpy(audio_data, (uint8 *)(ring_buffer->data) + ring_buffer->play_cursor,
+           region1_size);
     memcpy(&audio_data[region1_size], ring_buffer->data, region2_size);
-    ring_buffer->play_cursor = (ring_buffer->play_cursor + length) % ring_buffer->size;
-    ring_buffer->write_cursor = (ring_buffer->play_cursor + length) % ring_buffer->size;
+    ring_buffer->play_cursor =
+        (ring_buffer->play_cursor + length) % ring_buffer->size;
+    ring_buffer->write_cursor =
+        (ring_buffer->play_cursor + length) % ring_buffer->size;
 }
 
 internal void
@@ -87,7 +90,8 @@ sdl_init_audio(int32 samples_per_second, int32 buffer_size)
 
     SDL_OpenAudio(&audio_settings, 0);
 
-    printf("Initialised an Audio device at frequency %d Hz, %d Channels, buffer size %d\n",
+    printf("Initialised an Audio device at frequency %d Hz, %d Channels, "
+           "buffer size %d\n",
            audio_settings.freq, audio_settings.channels, audio_settings.size);
 
     if (audio_settings.format != AUDIO_S16LSB)
@@ -108,30 +112,38 @@ sdl_get_window_dimension(SDL_Window *window)
 }
 
 internal void
-SDLResizeTexture(sdl_offscreen_buffer *buffer, SDL_Renderer *renderer, int width, int height)
+sdl_resize_texture(sdl_offscreen_buffer *buffer,
+                   SDL_Renderer *renderer,
+                   int width,
+                   int height)
 {
     int bytes_per_pixel = 4;
 
     if (buffer->memory)
     {
-        munmap(buffer->memory, buffer->width * buffer->height * bytes_per_pixel);
+        munmap(buffer->memory,
+               buffer->width * buffer->height * bytes_per_pixel);
     }
 
     if (buffer->texture)
     {
         SDL_DestroyTexture(buffer->texture);
     }
-    buffer->texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
-                                        SDL_TEXTUREACCESS_STREAMING, width, height);
+    buffer->texture =
+        SDL_CreateTexture(renderer, SDL_PIXELFORMAT_ARGB8888,
+                          SDL_TEXTUREACCESS_STREAMING, width, height);
     buffer->width = width;
     buffer->height = height;
     buffer->pitch = width * bytes_per_pixel;
-    buffer->memory = mmap(0, width * height * bytes_per_pixel, PROT_READ | PROT_WRITE,
-                          MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    buffer->memory =
+        mmap(0, width * height * bytes_per_pixel, PROT_READ | PROT_WRITE,
+             MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 }
 
 internal void
-sdl_update_window(SDL_Window *window, SDL_Renderer *renderer, sdl_offscreen_buffer *buffer)
+sdl_update_window(SDL_Window *window,
+                  SDL_Renderer *renderer,
+                  sdl_offscreen_buffer *buffer)
 {
     SDL_UpdateTexture(buffer->texture, 0, buffer->memory, buffer->pitch);
 
@@ -240,10 +252,11 @@ handle_event(SDL_Event *event)
             {
                 case SDL_WINDOWEVENT_SIZE_CHANGED:
                 {
-                    SDL_Window *window = SDL_GetWindowFromID(event->window.windowID);
+                    SDL_Window *window =
+                        SDL_GetWindowFromID(event->window.windowID);
                     SDL_Renderer *renderer = SDL_GetRenderer(window);
-                    printf("SDL_WINDOWEVENT_SIZE_CHANGED (%d, %d)\n", event->window.data1,
-                           event->window.data2);
+                    printf("SDL_WINDOWEVENT_SIZE_CHANGED (%d, %d)\n",
+                           event->window.data1, event->window.data2);
                 }
                 break;
 
@@ -255,7 +268,8 @@ handle_event(SDL_Event *event)
 
                 case SDL_WINDOWEVENT_EXPOSED:
                 {
-                    SDL_Window *window = SDL_GetWindowFromID(event->window.windowID);
+                    SDL_Window *window =
+                        SDL_GetWindowFromID(event->window.windowID);
                     SDL_Renderer *renderer = SDL_GetRenderer(window);
                     sdl_update_window(window, renderer, &global_backbuffer);
                 }
@@ -311,7 +325,8 @@ sdl_fill_sound_buffer(sdl_sound_output *sound_output,
 
     int region2_sample_count = region2_size / sound_output->bytes_per_sample;
     sample_out = (int16 *)region2;
-    for (int sample_index = 0; sample_index < region2_sample_count; ++sample_index)
+    for (int sample_index = 0; sample_index < region2_sample_count;
+         ++sample_index)
     {
         *sample_out++ = *samples++;
         *sample_out++ = *samples++;
@@ -324,7 +339,8 @@ sdl_open_game_controllers()
 {
     int max_joysticks = SDL_NumJoysticks();
     int controller_index = 0;
-    for (int joystick_index = 0; joystick_index < max_joysticks; ++joystick_index)
+    for (int joystick_index = 0; joystick_index < max_joysticks;
+         ++joystick_index)
     {
         if (!SDL_IsGameController(joystick_index))
         {
@@ -335,10 +351,12 @@ sdl_open_game_controllers()
             break;
         }
 
-        controller_handles[controller_index] = SDL_GameControllerOpen(joystick_index);
+        controller_handles[controller_index] =
+            SDL_GameControllerOpen(joystick_index);
         SDL_Joystick *joystick_handle =
             SDL_GameControllerGetJoystick(controller_handles[controller_index]);
-        rumble_handles[controller_index] = SDL_HapticOpenFromJoystick(joystick_handle);
+        rumble_handles[controller_index] =
+            SDL_HapticOpenFromJoystick(joystick_handle);
 
         if (SDL_HapticRumbleInit(rumble_handles[controller_index]) != 0)
         {
@@ -353,7 +371,8 @@ sdl_open_game_controllers()
 internal void
 sdl_close_game_controllers()
 {
-    for (int controller_index = 0; controller_index < MAX_CONTROLLERS; ++controller_index)
+    for (int controller_index = 0; controller_index < MAX_CONTROLLERS;
+         ++controller_index)
     {
         if (controller_handles[controller_index])
         {
@@ -367,22 +386,26 @@ sdl_close_game_controllers()
 int
 main(int argc, char *argv[])
 {
-    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC | SDL_INIT_AUDIO);
+    SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER | SDL_INIT_HAPTIC |
+             SDL_INIT_AUDIO);
     uint64 perf_count_frequency = SDL_GetPerformanceFrequency();
     // Initialise our Game Controllers:
     sdl_open_game_controllers();
     // Create our window.
-    SDL_Window *window = SDL_CreateWindow("Handmade Hero", SDL_WINDOWPOS_UNDEFINED,
-                                          SDL_WINDOWPOS_UNDEFINED, 640, 480, SDL_WINDOW_RESIZABLE);
+    SDL_Window *window = SDL_CreateWindow(
+        "Handmade Hero", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 640,
+        480, SDL_WINDOW_RESIZABLE);
     if (window)
     {
         // Create a "Renderer" for our window.
-        SDL_Renderer *renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
+        SDL_Renderer *renderer =
+            SDL_CreateRenderer(window, -1, SDL_RENDERER_PRESENTVSYNC);
         if (renderer)
         {
             bool running = true;
             sdl_window_dimension dimension = sdl_get_window_dimension(window);
-            SDLResizeTexture(&global_backbuffer, renderer, dimension.width, dimension.height);
+            sdl_resize_texture(&global_backbuffer, renderer, dimension.width,
+                               dimension.height);
             int x_offset = 0;
             int y_offset = 0;
 
@@ -391,20 +414,22 @@ main(int argc, char *argv[])
             sound_output.tone_hz = 256;
             sound_output.tone_volume = 3000;
             sound_output.running_sample_index = 0;
-            sound_output.wave_period = sound_output.samples_per_second / sound_output.tone_hz;
+            sound_output.wave_period =
+                sound_output.samples_per_second / sound_output.tone_hz;
             sound_output.bytes_per_sample = sizeof(int16) * 2;
             sound_output.secondary_buffer_size =
                 sound_output.samples_per_second * sound_output.bytes_per_sample;
             sound_output.t_sine = 0.0f;
-            sound_output.latency_sample_count = sound_output.samples_per_second / 15;
+            sound_output.latency_sample_count =
+                sound_output.samples_per_second / 15;
 
             // Open our audio device:
             sdl_init_audio(48000, sound_output.secondary_buffer_size);
 
-            // NOTE: calloc() allocates memory and clears it to zero. It accepts the number of
-            // things being allocated and their size.
-            int16 *samples =
-                (int16 *)calloc(sound_output.samples_per_second, sound_output.bytes_per_sample);
+            // NOTE: calloc() allocates memory and clears it to zero. It accepts
+            // the number of things being allocated and their size.
+            int16 *samples = (int16 *)calloc(sound_output.samples_per_second,
+                                             sound_output.bytes_per_sample);
             SDL_PauseAudio(0);
 
             uint64 last_counter = SDL_GetPerformanceCounter();
@@ -421,44 +446,58 @@ main(int argc, char *argv[])
                 }
 
                 // Poll our controllers for input.
-                for (int controller_index = 0; controller_index < MAX_CONTROLLERS;
-                     ++controller_index)
+                for (int controller_index = 0;
+                     controller_index < MAX_CONTROLLERS; ++controller_index)
                 {
                     if (controller_handles[controller_index] != 0 &&
-                        SDL_GameControllerGetAttached(controller_handles[controller_index]))
+                        SDL_GameControllerGetAttached(
+                            controller_handles[controller_index]))
                     {
-                        // NOTE: We have a controller with index ControllerIndex.
-                        bool up = SDL_GameControllerGetButton(controller_handles[controller_index],
-                                                              SDL_CONTROLLER_BUTTON_DPAD_UP);
+                        // NOTE: We have a controller with index
+                        // ControllerIndex.
+                        bool up = SDL_GameControllerGetButton(
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_DPAD_UP);
                         bool down = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_DPAD_DOWN);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_DPAD_DOWN);
                         bool left = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_DPAD_LEFT);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_DPAD_LEFT);
                         bool right = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_DPAD_RIGHT);
                         bool start = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_START);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_START);
                         bool back = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_BACK);
-                        bool left_shoulder =
-                            SDL_GameControllerGetButton(controller_handles[controller_index],
-                                                        SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
-                        bool right_shoulder =
-                            SDL_GameControllerGetButton(controller_handles[controller_index],
-                                                        SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_BACK);
+                        bool left_shoulder = SDL_GameControllerGetButton(
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_LEFTSHOULDER);
+                        bool right_shoulder = SDL_GameControllerGetButton(
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_RIGHTSHOULDER);
                         bool a_button = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_A);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_A);
                         bool b_button = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_B);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_B);
                         bool x_button = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_X);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_X);
                         bool y_button = SDL_GameControllerGetButton(
-                            controller_handles[controller_index], SDL_CONTROLLER_BUTTON_Y);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_BUTTON_Y);
 
                         int16 stick_x = SDL_GameControllerGetAxis(
-                            controller_handles[controller_index], SDL_CONTROLLER_AXIS_LEFTX);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_AXIS_LEFTX);
                         int16 stick_y = SDL_GameControllerGetAxis(
-                            controller_handles[controller_index], SDL_CONTROLLER_AXIS_LEFTY);
+                            controller_handles[controller_index],
+                            SDL_CONTROLLER_AXIS_LEFTY);
 
                         if (a_button)
                         {
@@ -468,16 +507,20 @@ main(int argc, char *argv[])
                         {
                             if (rumble_handles[controller_index])
                             {
-                                SDL_HapticRumblePlay(rumble_handles[controller_index], 0.5f, 2000);
+                                SDL_HapticRumblePlay(
+                                    rumble_handles[controller_index], 0.5f,
+                                    2000);
                             }
                         }
 
                         x_offset += stick_x / 4096;
                         y_offset += stick_y / 4096;
 
-                        sound_output.tone_hz = 512 + (int)(256.0f * ((float32)stick_y / 30000.0f));
+                        sound_output.tone_hz =
+                            512 + (int)(256.0f * ((float32)stick_y / 30000.0f));
                         sound_output.wave_period =
-                            sound_output.samples_per_second / sound_output.tone_hz;
+                            sound_output.samples_per_second /
+                            sound_output.tone_hz;
                     }
                     else
                     {
@@ -487,18 +530,19 @@ main(int argc, char *argv[])
 
                 // Sound output test
                 SDL_LockAudio();
-                int byte_to_lock =
-                    (sound_output.running_sample_index * sound_output.bytes_per_sample) %
-                    sound_output.secondary_buffer_size;
-                int target_cursor =
-                    ((audio_ring_buffer.play_cursor +
-                      (sound_output.latency_sample_count * sound_output.bytes_per_sample)) %
-                     sound_output.secondary_buffer_size);
+                int byte_to_lock = (sound_output.running_sample_index *
+                                    sound_output.bytes_per_sample) %
+                                   sound_output.secondary_buffer_size;
+                int target_cursor = ((audio_ring_buffer.play_cursor +
+                                      (sound_output.latency_sample_count *
+                                       sound_output.bytes_per_sample)) %
+                                     sound_output.secondary_buffer_size);
                 int bytes_to_write;
 
                 if (byte_to_lock > target_cursor)
                 {
-                    bytes_to_write = (sound_output.secondary_buffer_size - byte_to_lock);
+                    bytes_to_write =
+                        (sound_output.secondary_buffer_size - byte_to_lock);
                     bytes_to_write += target_cursor;
                 }
                 else
@@ -509,8 +553,10 @@ main(int argc, char *argv[])
                 SDL_UnlockAudio();
 
                 game_sound_output_buffer sound_buffer = {};
-                sound_buffer.samples_per_second = sound_output.samples_per_second;
-                sound_buffer.sample_count = bytes_to_write / sound_output.bytes_per_sample;
+                sound_buffer.samples_per_second =
+                    sound_output.samples_per_second;
+                sound_buffer.sample_count =
+                    bytes_to_write / sound_output.bytes_per_sample;
                 sound_buffer.samples = samples;
 
                 game_offscreen_buffer buffer = {};
@@ -519,10 +565,11 @@ main(int argc, char *argv[])
                 buffer.height = global_backbuffer.height;
                 buffer.pitch = global_backbuffer.pitch;
 
-                game_update_and_render(&buffer, x_offset, y_offset, &sound_buffer,
-                                       sound_output.tone_hz);
+                game_update_and_render(&buffer, x_offset, y_offset,
+                                       &sound_buffer, sound_output.tone_hz);
 
-                sdl_fill_sound_buffer(&sound_output, byte_to_lock, bytes_to_write, &sound_buffer);
+                sdl_fill_sound_buffer(&sound_output, byte_to_lock,
+                                      bytes_to_write, &sound_buffer);
                 sdl_update_window(window, renderer, &global_backbuffer);
 
                 uint64 end_cycle_counter = _rdtsc();
@@ -530,12 +577,14 @@ main(int argc, char *argv[])
                 uint64 counter_elapsed = end_counter - last_counter;
                 uint64 cycles_elapsed = end_cycle_counter - last_cycle_counter;
 
-                float64 ms_per_frame =
-                    (((1000.0f * (float64)counter_elapsed) / (float64)perf_count_frequency));
-                float64 FPS = (float64)perf_count_frequency / (float64)counter_elapsed;
+                float64 ms_per_frame = (((1000.0f * (float64)counter_elapsed) /
+                                         (float64)perf_count_frequency));
+                float64 FPS =
+                    (float64)perf_count_frequency / (float64)counter_elapsed;
                 float64 MCPF = ((float64)cycles_elapsed / (1000.0f * 1000.0f));
 
-                printf("%.02fms/f, %.02f/s, %.02fmc/f\n", ms_per_frame, FPS, MCPF);
+                printf("%.02fms/f, %.02f/s, %.02fmc/f\n", ms_per_frame, FPS,
+                       MCPF);
 
                 last_cycle_counter = end_cycle_counter;
                 last_counter = end_counter;

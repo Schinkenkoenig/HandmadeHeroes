@@ -10,7 +10,8 @@ game_output_sound(game_sound_output_buffer *sound_buffer, int tone_hz)
     int wave_period = sound_buffer->samples_per_second / tone_hz;
 
     int16 *sample_out = sound_buffer->samples;
-    for (int sample_index = 0; sample_index < sound_buffer->sample_count; ++sample_index)
+    for (int sample_index = 0; sample_index < sound_buffer->sample_count;
+         ++sample_index)
     {
         // TODO(casey): Draw this out for people
         float32 sine_value = sinf(t_sine);
@@ -23,7 +24,9 @@ game_output_sound(game_sound_output_buffer *sound_buffer, int tone_hz)
 }
 
 internal void
-render_weird_gradient(game_offscreen_buffer *buffer, int blue_offset, int green_offset)
+render_weird_gradient(game_offscreen_buffer *buffer,
+                      int blue_offset,
+                      int green_offset)
 {
     // TODO(casey): Let's see what the optimizer does
 
